@@ -1,14 +1,11 @@
 from typing import Tuple, TypeVar, Any
 
-import numpy as np
 from numba import prange
 from numba import njit as _njit
 
 from .autodiff import Context
 from .tensor import Tensor
 from .tensor_data import (
-    MAX_DIMS,
-    Index,
     Shape,
     Strides,
     Storage,
@@ -88,44 +85,50 @@ def _tensor_conv1d(
         and in_channels == in_channels_
         and out_channels == out_channels_
     )
+    s1 = input_strides
+    s2 = weight_strides
 
     # TODO: Implement for Task 4.1.
 
-    for out_linear_index in prange(out_size):
-        out_index: Index = np.empty(MAX_DIMS, dtype=np.int32)
-        # Convert linear index to multi-dimensional index
-        to_index(out_linear_index, out_shape, out_index)
+    for batch_idx in prange(batch):
+        for out_channel_idx in range(out_channels):
+            for out_width_idx in range(out_width):
+                out_linear_index = (
+                    batch_idx * out_strides[0]
+                    + out_channel_idx * out_strides[1]
+                    + out_width_idx * out_strides[2]
+                )
+                accumulation = 0.0
 
-        batch = out_index[0]
-        out_channel = out_index[1]
-        out_col = out_index[2]
+                for in_channel_idx in range(in_channels):
+                    for kernel_width_idx in range(kw):
+                        if reverse:
+                            in_width_idx = (
+                                out_width_idx - (kw - 1 - kernel_width_idx)
+                            )  # we dot product and add up all values in kw region going from right to left
 
-        accumulation = 0.0
+                        else:
+                            in_width_idx = (
+                                out_width_idx + kernel_width_idx
+                            )  # we dot product and add up all values in kw region going from left to right
 
-        for in_channel in range(in_channels):
-            for weight_col in range(kw):
-                if reverse:
-                    input_col = (
-                        out_col - (kw - 1 - weight_col)
-                    )  # we dot product and add up all values in kw region going from right to left
+                        if 0 <= in_width_idx < width:
+                            input_linear_index = (
+                                batch_idx * s1[0]
+                                + in_channel_idx * s1[1]
+                                + in_width_idx * s1[2]
+                            )
+                            weight_linear_index = (
+                                out_channel_idx * s2[0]
+                                + in_channel_idx * s2[1]
+                                + kernel_width_idx * s2[2]
+                            )
 
-                else:
-                    input_col = (
-                        out_col + weight_col
-                    )  # we dot product and add up all values in kw region going from left to right
+                            accumulation += (
+                                input[input_linear_index] * weight[weight_linear_index]
+                            )
 
-                if input_col >= 0 and input_col < width:
-                    input_linear_index = index_to_position(
-                        np.array([batch, in_channel, input_col]), input_strides
-                    )
-                    weight_linear_index = index_to_position(
-                        np.array([out_channel, in_channel, weight_col]), weight_strides
-                    )
-                    accumulation += (
-                        input[input_linear_index] * weight[weight_linear_index]
-                    )
-
-        out[out_linear_index] = accumulation
+                out[out_linear_index] = accumulation
 
 
 tensor_conv1d = njit(_tensor_conv1d, parallel=True)
@@ -238,7 +241,7 @@ def _tensor_conv2d(
         reverse (bool): anchor weight at top-left or bottom-right
 
     """
-    batch_, out_channels, _, _ = out_shape
+    batch_, out_channels, out_height, out_width = out_shape
     batch, in_channels, height, width = input_shape
     out_channels_, in_channels_, kh, kw = weight_shape
 
@@ -248,57 +251,70 @@ def _tensor_conv2d(
         and out_channels == out_channels_
     )
 
+    s1 = input_strides
+    s2 = weight_strides
+    # inners
+    s10, s11, s12, s13 = s1[0], s1[1], s1[2], s1[3]
+    s20, s21, s22, s23 = s2[0], s2[1], s2[2], s2[3]
+
     # TODO: Implement for Task 4.2.
 
-    for out_linear_index in prange(out_size):
-        out_index: Index = np.empty(MAX_DIMS, dtype=np.int32)
-        # Convert linear index to multi-dimensional index
-        to_index(out_linear_index, out_shape, out_index)
+    for batch_idx in prange(batch):
+        for out_channel_idx in range(out_channels):
+            for out_height_idx in range(out_height):
+                for out_width_idx in range(out_width):
+                    # Compute the linear index for the output element
+                    out_linear_index = (
+                        batch_idx * out_strides[0]
+                        + out_channel_idx * out_strides[1]
+                        + out_height_idx * out_strides[2]
+                        + out_width_idx * out_strides[3]
+                    )
 
-        batch = out_index[0]
-        out_channel = out_index[1]
-        out_row = out_index[2]
-        out_col = out_index[3]
+                    accumulation = 0.0
 
-        accumulation = 0.0
+                    for in_channel_idx in range(in_channels):
+                        for kernel_height_idx in range(kh):
+                            for kernel_width_idx in range(kw):
+                                if reverse:
+                                    in_height_idx = (
+                                        out_height_idx - (kh - 1 - kernel_height_idx)
+                                    )  # we dot product and add up all values in kh region going from bottom to top
+                                    in_width_idx = (
+                                        out_width_idx - (kw - 1 - kernel_width_idx)
+                                    )  # we dot product and add up all values in kw region going from right to left
+                                else:
+                                    in_height_idx = (
+                                        out_height_idx + kernel_height_idx
+                                    )  # we dot product and add up all values in kh region going from top to bottom
+                                    in_width_idx = (
+                                        out_width_idx + kernel_width_idx
+                                    )  # we dot product and add up all values in kw region going from left to right
 
-        for in_channel in range(in_channels):
-            for weight_row in range(kh):
-                for weight_col in range(kw):
-                    if reverse:
-                        input_row = (
-                            out_row - (kh - 1 - weight_row)
-                        )  # we dot product and add up all values in kh x kw region going from bottom to top
-                        input_col = (
-                            out_col - (kw - 1 - weight_col)
-                        )  # we dot product and add up all values in kh x kw region going from right to left
-                    else:
-                        input_row = (
-                            out_row + weight_row
-                        )  # we dot product and add up all values in kh x kw region going from top to bottom
-                        input_col = (
-                            out_col + weight_col
-                        )  # we dot product and add up all values in kh x kw region going from left to right
+                                # make sure the indices are within the bounds
+                                if (
+                                    0 <= in_height_idx < height
+                                    and 0 <= in_width_idx < width
+                                ):
+                                    input_linear_index = (
+                                        batch_idx * s10
+                                        + in_channel_idx * s11
+                                        + in_height_idx * s12
+                                        + in_width_idx * s13
+                                    )
+                                    weight_linear_index = (
+                                        out_channel_idx * s20
+                                        + in_channel_idx * s21
+                                        + kernel_height_idx * s22
+                                        + kernel_width_idx * s23
+                                    )
 
-                    if (
-                        input_row >= 0
-                        and input_row < height
-                        and input_col >= 0
-                        and input_col < width
-                    ):
-                        input_linear_index = index_to_position(
-                            np.array([batch, in_channel, input_row, input_col]),
-                            input_strides,
-                        )
-                        weight_linear_index = index_to_position(
-                            np.array([out_channel, in_channel, weight_row, weight_col]),
-                            weight_strides,
-                        )
-                        accumulation += (
-                            input[input_linear_index] * weight[weight_linear_index]
-                        )
+                                    accumulation += (
+                                        input[input_linear_index]
+                                        * weight[weight_linear_index]
+                                    )
 
-        out[out_linear_index] = accumulation
+                    out[out_linear_index] = accumulation
 
 
 tensor_conv2d = njit(_tensor_conv2d, parallel=True, fastmath=True)

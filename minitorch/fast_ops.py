@@ -385,8 +385,8 @@ def _tensor_matrix_multiply(
     # TODO: Implement for Task 3.2.
 
     for n in prange(out_shape[0]):  # outer loop in parallel with no index buffers
-        for i in range(out_shape[-2]):
-            for j in range(out_shape[-1]):
+        for i in prange(out_shape[-2]):
+            for j in prange(out_shape[-1]):
                 val = 0
                 a_linear_index = n * a_batch_stride + i * a_strides[-2]
                 b_linear_index = n * b_batch_stride + j * b_strides[-1]

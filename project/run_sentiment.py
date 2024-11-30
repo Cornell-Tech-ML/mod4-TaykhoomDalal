@@ -83,13 +83,8 @@ class CNNSentimentKim(minitorch.Module):
         x2 = self.conv2(x).relu()
         x3 = self.conv3(x).relu()
 
-        # Max-over-time pooling
-        x1 = minitorch.max(x1, 2) # [batch, feature_map_size]
-        x2 = minitorch.max(x2, 2)
-        x3 = minitorch.max(x3, 2)
-
         # add the pooled outputs
-        x = x1 + x2 + x3
+        x = minitorch.max(x1, 2) + minitorch.max(x2, 2) + minitorch.max(x3, 2)
 
         # Fully connected layer with ReLU and Dropout
         x = self.linear(x.view(x.shape[0], self.feature_map_size))
