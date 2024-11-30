@@ -255,7 +255,10 @@ def _tensor_conv2d(
         # Convert linear index to multi-dimensional index
         to_index(out_linear_index, out_shape, out_index)
 
-        batch, out_channel, out_row, out_col = out_index
+        batch = out_index[0]
+        out_channel = out_index[1]
+        out_row = out_index[2]
+        out_col = out_index[3]
 
         accumulation = 0.0
 
