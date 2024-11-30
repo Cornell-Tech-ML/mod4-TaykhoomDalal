@@ -79,9 +79,9 @@ class CNNSentimentKim(minitorch.Module):
         x = embeddings.permute(0, 2, 1) # [batch, embedding_dim, sentence length]
 
         # Apply each convolution, followed by ReLU
-        x1 = self.conv1(embeddings).relu()
-        x2 = self.conv2(embeddings).relu()
-        x3 = self.conv3(embeddings).relu()
+        x1 = self.conv1(x).relu()
+        x2 = self.conv2(x).relu()
+        x3 = self.conv3(x).relu()
 
         # Max-over-time pooling
         x1 = minitorch.max(x1, 2) # [batch, feature_map_size]
