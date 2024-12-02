@@ -88,7 +88,11 @@ class CNNSentimentKim(minitorch.Module):
 
         # Fully connected layer with ReLU and Dropout
         x = self.linear(x.view(x.shape[0], self.feature_map_size))
-        x = minitorch.dropout(x, self.dropout)
+        
+        if self.training: # apply dropout only during training
+            x = minitorch.dropout(x, self.dropout, ignore = False)
+        else:
+            x = minitorch.dropout(x, self.dropout, ignore = True)
 
         # Sigmoid activation for binary classification
         x = x.sigmoid().view(x.shape[0])

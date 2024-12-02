@@ -81,6 +81,7 @@ class Network(minitorch.Module):
         # TODO: Implement for Task 4.5.
         x = self.conv1(x).relu()
         self.mid = x
+        
         x = self.conv2(x).relu()
         self.out = x
 
@@ -89,7 +90,11 @@ class Network(minitorch.Module):
 
         x = self.linear(x).relu()
 
-        x = minitorch.dropout(x, 0.25)
+        if self.training: # only apply dropout during training
+            x = minitorch.dropout(x, 0.25, ignore=False)
+        else:
+            x = minitorch.dropout(x, 0.25, ignore=True)
+
         x = self.output(x)
         return minitorch.logsoftmax(x, 1)
 
