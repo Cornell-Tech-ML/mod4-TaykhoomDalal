@@ -1,14 +1,11 @@
 from typing import Tuple, TypeVar, Any
 
-import numpy as np
 from numba import prange
 from numba import njit as _njit
 
 from .autodiff import Context
 from .tensor import Tensor
 from .tensor_data import (
-    MAX_DIMS,
-    Index,
     Shape,
     Strides,
     Storage,
@@ -22,6 +19,7 @@ Fn = TypeVar("Fn")
 
 
 def njit(fn: Fn, **kwargs: Any) -> Fn:
+    """Decorator to JIT compile functions with NUMBA."""
     return _njit(inline="always", **kwargs)(fn)  # type: ignore
 
 
@@ -72,9 +70,9 @@ def _tensor_conv1d(
         input (Storage): storage for `input` tensor.
         input_shape (Shape): shape for `input` tensor.
         input_strides (Strides): strides for `input` tensor.
-        weight (Storage): storage for `input` tensor.
-        weight_shape (Shape): shape for `input` tensor.
-        weight_strides (Strides): strides for `input` tensor.
+        weight (Storage): storage for `weight` tensor.
+        weight_shape (Shape): shape for `weight` tensor.
+        weight_strides (Strides): strides for `weight` tensor.
         reverse (bool): anchor weight at left or right
 
     """
@@ -91,7 +89,46 @@ def _tensor_conv1d(
     s2 = weight_strides
 
     # TODO: Implement for Task 4.1.
-    raise NotImplementedError("Need to implement for Task 4.1")
+
+    for batch_idx in prange(batch):
+        for out_channel_idx in range(out_channels):
+            for out_width_idx in range(out_width):
+                out_linear_index = (
+                    batch_idx * out_strides[0]
+                    + out_channel_idx * out_strides[1]
+                    + out_width_idx * out_strides[2]
+                )
+                accumulation = 0.0
+
+                for in_channel_idx in range(in_channels):
+                    for kernel_width_idx in range(kw):
+                        if reverse:
+                            in_width_idx = (
+                                out_width_idx - (kw - 1 - kernel_width_idx)
+                            )  # we dot product and add up all values in kw region going from right to left
+
+                        else:
+                            in_width_idx = (
+                                out_width_idx + kernel_width_idx
+                            )  # we dot product and add up all values in kw region going from left to right
+
+                        if 0 <= in_width_idx < width:
+                            input_linear_index = (
+                                batch_idx * s1[0]
+                                + in_channel_idx * s1[1]
+                                + in_width_idx * s1[2]
+                            )
+                            weight_linear_index = (
+                                out_channel_idx * s2[0]
+                                + in_channel_idx * s2[1]
+                                + kernel_width_idx * s2[2]
+                            )
+
+                            accumulation += (
+                                input[input_linear_index] * weight[weight_linear_index]
+                            )
+
+                out[out_linear_index] = accumulation
 
 
 tensor_conv1d = njit(_tensor_conv1d, parallel=True)
@@ -127,6 +164,7 @@ class Conv1dFun(Function):
 
     @staticmethod
     def backward(ctx: Context, grad_output: Tensor) -> Tuple[Tensor, Tensor]:
+        """Conv1d backward (module 4)"""
         input, weight = ctx.saved_values
         batch, in_channels, w = input.shape
         out_channels, in_channels, kw = weight.shape
@@ -203,7 +241,7 @@ def _tensor_conv2d(
         reverse (bool): anchor weight at top-left or bottom-right
 
     """
-    batch_, out_channels, _, _ = out_shape
+    batch_, out_channels, out_height, out_width = out_shape
     batch, in_channels, height, width = input_shape
     out_channels_, in_channels_, kh, kw = weight_shape
 
@@ -220,7 +258,63 @@ def _tensor_conv2d(
     s20, s21, s22, s23 = s2[0], s2[1], s2[2], s2[3]
 
     # TODO: Implement for Task 4.2.
-    raise NotImplementedError("Need to implement for Task 4.2")
+
+    for batch_idx in prange(batch):
+        for out_channel_idx in range(out_channels):
+            for out_height_idx in range(out_height):
+                for out_width_idx in range(out_width):
+                    # Compute the linear index for the output element
+                    out_linear_index = (
+                        batch_idx * out_strides[0]
+                        + out_channel_idx * out_strides[1]
+                        + out_height_idx * out_strides[2]
+                        + out_width_idx * out_strides[3]
+                    )
+
+                    accumulation = 0.0
+
+                    for in_channel_idx in range(in_channels):
+                        for kernel_height_idx in range(kh):
+                            for kernel_width_idx in range(kw):
+                                if reverse:
+                                    in_height_idx = (
+                                        out_height_idx - (kh - 1 - kernel_height_idx)
+                                    )  # we dot product and add up all values in kh region going from bottom to top
+                                    in_width_idx = (
+                                        out_width_idx - (kw - 1 - kernel_width_idx)
+                                    )  # we dot product and add up all values in kw region going from right to left
+                                else:
+                                    in_height_idx = (
+                                        out_height_idx + kernel_height_idx
+                                    )  # we dot product and add up all values in kh region going from top to bottom
+                                    in_width_idx = (
+                                        out_width_idx + kernel_width_idx
+                                    )  # we dot product and add up all values in kw region going from left to right
+
+                                # make sure the indices are within the bounds
+                                if (
+                                    0 <= in_height_idx < height
+                                    and 0 <= in_width_idx < width
+                                ):
+                                    input_linear_index = (
+                                        batch_idx * s10
+                                        + in_channel_idx * s11
+                                        + in_height_idx * s12
+                                        + in_width_idx * s13
+                                    )
+                                    weight_linear_index = (
+                                        out_channel_idx * s20
+                                        + in_channel_idx * s21
+                                        + kernel_height_idx * s22
+                                        + kernel_width_idx * s23
+                                    )
+
+                                    accumulation += (
+                                        input[input_linear_index]
+                                        * weight[weight_linear_index]
+                                    )
+
+                    out[out_linear_index] = accumulation
 
 
 tensor_conv2d = njit(_tensor_conv2d, parallel=True, fastmath=True)
@@ -254,6 +348,7 @@ class Conv2dFun(Function):
 
     @staticmethod
     def backward(ctx: Context, grad_output: Tensor) -> Tuple[Tensor, Tensor]:
+        """Conv2d backward (module 4)"""
         input, weight = ctx.saved_values
         batch, in_channels, h, w = input.shape
         out_channels, in_channels, kh, kw = weight.shape
