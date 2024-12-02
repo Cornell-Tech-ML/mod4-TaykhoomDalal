@@ -81,7 +81,7 @@ class Network(minitorch.Module):
         # TODO: Implement for Task 4.5.
         x = self.conv1(x).relu()
         self.mid = x
-        
+
         x = self.conv2(x).relu()
         self.out = x
 
