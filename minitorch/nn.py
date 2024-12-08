@@ -88,13 +88,13 @@ def argmax(input: Tensor, dim: int) -> Tensor:
 
     Args:
     ----
-        input : input tensor
-        dim : dimension to apply argmax
+        input : tensor to apply argmax
+        dim : dimension to apply argmax over
 
 
     Returns:
     -------
-        :class:`Tensor` : tensor with 1 on highest cell in dim, 0 otherwise
+        Tensor where there is a 1 in the position that has the highest value, and 0 elsewhere.
 
     """
     out = max_reduce(input, dim)
