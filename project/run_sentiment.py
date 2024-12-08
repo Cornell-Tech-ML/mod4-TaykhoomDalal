@@ -35,8 +35,8 @@ class Conv1d(minitorch.Module):
 
     def forward(self, input):
         # TODO: Implement for Task 4.5.
-        raise NotImplementedError("Need to implement for Task 4.5")
-
+        output = minitorch.Conv1dFun.apply(input, self.weights.value)
+        return output + self.bias.value
 
 class CNNSentimentKim(minitorch.Module):
     """
@@ -62,14 +62,43 @@ class CNNSentimentKim(minitorch.Module):
         super().__init__()
         self.feature_map_size = feature_map_size
         # TODO: Implement for Task 4.5.
-        raise NotImplementedError("Need to implement for Task 4.5")
+        self.dropout = dropout
+
+        self.conv1 = Conv1d(embedding_size, feature_map_size, filter_sizes[0])
+        self.conv2 = Conv1d(embedding_size, feature_map_size, filter_sizes[1])
+        self.conv3 = Conv1d(embedding_size, feature_map_size, filter_sizes[2])
+
+        self.linear = Linear(feature_map_size, 1)
 
     def forward(self, embeddings):
         """
         embeddings tensor: [batch x sentence length x embedding dim]
         """
         # TODO: Implement for Task 4.5.
-        raise NotImplementedError("Need to implement for Task 4.5")
+
+        x = embeddings.permute(0, 2, 1) # [batch, embedding_dim, sentence length]
+
+        # Apply each convolution, followed by ReLU
+        x1 = self.conv1(x).relu()
+        x2 = self.conv2(x).relu()
+        x3 = self.conv3(x).relu()
+
+        # add the pooled outputs
+        x = minitorch.max(x1, 2) + minitorch.max(x2, 2) + minitorch.max(x3, 2)
+
+        # Fully connected layer with ReLU and Dropout
+        x = self.linear(x.view(x.shape[0], self.feature_map_size))
+
+        if self.training: # apply dropout only during training
+            x = minitorch.dropout(x, self.dropout, ignore = False)
+        else:
+            x = minitorch.dropout(x, self.dropout, ignore = True)
+
+        # Sigmoid activation for binary classification
+        x = x.sigmoid().view(x.shape[0])
+
+        return x
+
 
 
 # Evaluation helper methods
